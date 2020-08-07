@@ -25,7 +25,7 @@ def gc1_sloc(coordinate_1,coordinate_2,radius):
     inner_cent_ang = math.sin(latrat1)*math.sin(latrat2) + math.cos(latrat1)*math.cos(latrat2)*math.cos(difflonrat)
     cent_ang = math.acos(inner_cent_ang)
     dist_sloc = radius*cent_ang
-    return dist_sloc
+    return round(dist_sloc,2)
 
 ### Great Circle Distance #2: Haversine Formula
 def gc2_hf(coordinate_1,coordinate_2,radius):
@@ -40,7 +40,7 @@ def gc2_hf(coordinate_1,coordinate_2,radius):
     inner_cent_ang = math.sqrt((math.sin(difflatrat/2)**2)+math.cos(latrat1)*math.cos(latrat2)*(math.sin(difflonrat/2)**2))
     cent_ang = 2*math.asin(inner_cent_ang)
     dist_hav = radius*cent_ang
-    return dist_hav
+    return round(dist_hav,2)
 
 #Split list into chunks of size n
 def chunk(lst, n):
@@ -55,82 +55,68 @@ def getgoogleapikey(api_filename):
     api_object.close()
     return my_api
 
-
 #get API key
 api_file = r'google_api_key.txt'
 api_key = getgoogleapikey(api_file)
 
 #change directory to working
-path = r'/Users/mason/Documents/phd/research/bank_deposit_survey/orig_csv/ALL_2019'
+parent = r'/Users/mason/Documents/phd/research/bank_comp/bank_deposit_survey/orig_csv/'
+stor_dir = "FIPS"
+path = os.path.join(parent, stor_dir) 
 os.chdir(path)
 print("Current Working Directory " , os.getcwd())
-filename = r'ALL_2019.csv'
-
-fields = [] 
-rows = []
-
-  
-# reading csv file 
-with open(filename, 'r', encoding='ISO-8859-1') as csvfile: 
-    # creating a csv reader object 
-    csvreader = csv.reader(csvfile) 
-      
-    # extracting field names through first row 
-    fields = next(csvreader) 
-  
-    # extracting each data row one by one 
-    for row in csvreader: 
-        rows.append(row)
-
-#Work with columns
-nobs = len(rows)
-extract_fips = []
-extract_unid = []
-extract_lon = []
-extract_lat = []
-for i in range(nobs):
-    if rows[i][32] != '':
-        extract_unid.append(rows[i][3])
-        extract_lat.append(rows[i][32])
-        extract_lon.append(rows[i][33])
-        extract_fips.append(rows[i][36])  
-unique_fips = set(extract_fips)
 
 
-#Data structure with bank id and lon./lat. by county
-unid_by_county = {}
+#load unique fips
+fips_file_name = r'unique_fips.csv'
+with open(fips_file_name, mode='r') as fips_file:
+    fips_reader = csv.reader(fips_file) 
+    unique_fips = []
+    for row in fips_reader: 
+        unique_fips.append(row[0])
+
 for fips in unique_fips:
-    temp_unid = []
-    temp_lon = []
-    temp_lat = []
-    for i,j in enumerate(extract_fips):
-        if j == fips:
-            temp_unid.append(extract_unid[i])
-            temp_lon.append(extract_lon[i])
-            temp_lat.append(extract_lat[i])
-    unid_by_county[fips] = [temp_unid,temp_lon,temp_lat]
+    temp_file_name = r'fips_' + fips + r'.csv'
+    with open(temp_file_name, 'r', encoding='ISO-8859-1') as temp_file:
+        tempreader = csv.reader(temp_file)
+        fields = next(tempreader)
+        fields = [] 
+        rows = []
+        for row in tempreader: 
+            rows.append(row)
+             
+    #Work with columns
+    nobs = len(rows)
+    extract_unid = []
+    extract_lon = []
+    extract_lat = []
+    for i in range(nobs):
+            extract_unid.append(rows[i][3])
+            extract_lat.append(rows[i][32])
+            extract_lon.append(rows[i][33])
+    unique_wn_unid = set(extract_unid)
 
+    #Data structure with bank id and lon./lat. by county
+    loc_by_unid = {}
 
-#All combinations with county of bankid
-fips_unid_comb = {}
-for fips in unique_fips:
-    fips_unid_comb[fips] = list(itertools.permutations(unid_by_county[fips][0],2))
+    for unid in unique_wn_unid:
+        temp_lon = 0
+        temp_lat = 0
+        for i,j in enumerate(extract_unid):
+            if j == unid and temp_lon == 0 and temp_lat == 0:
+                loc_by_unid[unid] = [extract_lon[i],extract_lat[i]]
 
-    
-#Distance between all banks within a county (great circle)
-fips_unid_comb_w_dist = {}
-for fips in unique_fips:
-    fips_pair_num = len(fips_unid_comb[fips])
+    #All combinations with county of bankid
+    unid_comb = list(itertools.product(unique_wn_unid,repeat=2))
+
+    #Distance between all banks within a county (great circle)
+    fips_unid_comb_w_dist = {}
     fips_list = []
-    for n in range(fips_pair_num):
-        u1,u2 = fips_unid_comb[fips][n]
-        for i,j in enumerate(unid_by_county[fips][0]):
-            if j == u1:
-                lon1 = float(unid_by_county[fips][1][i])
-                lat1 = float(unid_by_county[fips][2][i])
-            if j == u2:
-                lon2 = float(unid_by_county[fips][1][i])
-                lat2 = float(unid_by_county[fips][2][i])
+    for pair in unid_comb:
+        lon1 = float(loc_by_unid[pair[0]][0])
+        lat1 = float(loc_by_unid[pair[0]][1])
+        lon2 = float(loc_by_unid[pair[1]][0])
+        lat2 = float(loc_by_unid[pair[1]][1])
         coord1 = lon1,lat1
         coord2 = lon2,lat2
         wgs_mer = 6371000
@@ -140,9 +126,20 @@ for fips in unique_fips:
         if coord1 == coord2:
             dist1 = 0
             dist2 = 0
-        pair_list = [u1,u2,dist1,dist2]
+        pair_list = [pair[0],pair[1],dist1,dist2]
         fips_list.append(pair_list)
     fips_unid_comb_w_dist[fips] = fips_list
+print(fips_unid_comb_w_dist)
+'''   
+
+with open('all_bank_dist.csv', mode='w') as dist_file:
+    dist_writer = csv.writer(dist_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+    dist_writer.writerow(['FIPS', 'UNID1', 'UNID2', 'DIST_SLOC', 'DIST_HF'])
+    for fips in unique_wn_fips:
+        temp_len = len(fips_unid_comb_w_dist[fips])
+        for i in range(temp_len):
+            dist_writer.writerow([fips] + fips_unid_comb_w_dist[fips][i])
+
 
 #Distance between all banks within a county (google maps)
 fips_unid_comb_w_idist = {}
@@ -184,8 +181,10 @@ for orig in unid_by_county[fips][0]:
             orig_dist[curr_dest] = JSON_object['rows'][0]['elements'][num]['distance']['value']
         break
     fips_dist[orig] = orig_dist
-    
-'''
+
+
+
+
 look up bank id 453769 to 480332 (4.620km) versus 480332 to 453769 (5.311km)
 
 make sure this is all the origins, for each these, I have the first 4 as dest which makes sense given the break in the chunking loop
@@ -194,17 +193,7 @@ make sure this is all the origins, for each these, I have the first 4 as dest wh
 make sure test.txt (addresses) aligns correctly with unid in
 '531913': {'453769': 2891, '252432': 3761, '480332': 2333, '011936': 1982}}
 (last dict addition to fips_dist
-'''
 
-
-'''
-with open('all_bank_dist.csv', mode='w') as dist_file:
-    dist_writer = csv.writer(dist_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-    dist_writer.writerow(['FIPS', 'UNID1', 'UNID2', 'DIST_SLOC', 'DIST_HF'])
-    for fips in unique_fips:
-        temp_len = len(fips_unid_comb_w_dist[fips])
-        for i in range(temp_len):
-            dist_writer.writerow([fips] + fips_unid_comb_w_dist[fips][i])
 
 
 #For Google APIS
@@ -229,13 +218,11 @@ print(b)
 
 
 
-
-
-
 #JSON in Python
 #https://realpython.com/python-json/
 
 #Distance Matrix API
 #https://developers.google.com/maps/documentation/distance-matrix/start
 '''
+
 
